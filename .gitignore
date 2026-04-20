@@ -1,0 +1,60 @@
+# ======================
+# Dependencies
+# ======================
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# ======================
+# Build Outputs
+# ======================
+.next/
+frontend/.next/
+backend/dist/
+dist/
+build/
+out/
+coverage/
+
+# ======================
+# Environment Variables (NEVER COMMIT)
+# ======================
+.env
+.env.*
+!.env.prod.example
+
+# ======================
+# Runtime / Generated Files
+# ======================
+backend/uploads/
+*.log
+logs/
+
+# ======================
+# OS / Editor Junk
+# ======================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ======================
+# TypeScript
+# ======================
+*.tsbuildinfo
+next-env.d.ts
+
+# ======================
+# Testing
+# ======================
+coverage/
+.nyc_output/
+
+
+API.md
+DEPLOYMENT.md
+ENTERPRISE_FEATURES.md
+

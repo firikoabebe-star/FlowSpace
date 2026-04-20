@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: flowspace-db
+    environment:
+      POSTGRES_DB: flowspace
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - flowspace-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flowspace-backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/flowspace
+      JWT_ACCESS_SECRET: your-super-secret-access-key-change-in-production
+      JWT_REFRESH_SECRET: your-super-secret-refresh-key-change-in-production
+      NODE_ENV: production
+      PORT: 5000
+      CORS_ORIGIN: http://localhost:3000
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+    networks:
+      - flowspace-network
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ./frontend/flowspace
+      dockerfile: Dockerfile
+    container_name: flowspace-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5000/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - flowspace-network
+
+volumes:
+  postgres_data:
+
+networks:
+  flowspace-network:
+    driver: bridge

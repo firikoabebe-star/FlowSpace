@@ -1,0 +1,287 @@
+// schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------- ENUMS -----------------
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum NotificationType {
+  MESSAGE
+  MENTION
+  INVITE
+  SYSTEM
+}
+
+// ----------------- MODELS -----------------
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  username      String   @unique
+  displayName   String
+  password      String
+  avatarUrl     String?
+  refreshToken  String?
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  ownedWorkspaces    Workspace[]        @relation("WorkspaceOwner")
+  workspaceMembers   WorkspaceMember[]
+  channelMembers     ChannelMember[]
+  createdChannels    Channel[]          @relation("ChannelCreator")
+  messages           Message[]
+  sentDirectMessages DirectMessage[]    @relation("DirectMessageSender")
+  receivedDirectMessages DirectMessage[] @relation("DirectMessageReceiver")
+  notifications      Notification[]
+  uploadedFiles      File[]             @relation("FileUploader")
+  reactions          MessageReaction[]
+  auditLogs          AuditLog[]
+
+  @@index([email])
+  @@index([username])
+  @@index([lastLoginAt])
+  @@map("users")
+}
+
+model Workspace {
+  id         String   @id @default(uuid())
+  name       String
+  slug       String   @unique
+  description String?
+  ownerId    String
+  inviteCode String   @unique @default(uuid())
+  isDefault   Boolean  @default(false)
+  settings   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  owner      User                @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members    WorkspaceMember[]
+  channels   Channel[]
+  auditLogs  AuditLog[]
+
+  @@index([slug])
+  @@index([ownerId])
+  @@index([inviteCode])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  joinedAt    DateTime @default(now())
+  lastActiveAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([role])
+  @@map("workspace_members")
+}
+
+model Channel {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  workspaceId String
+  isPrivate   Boolean  @default(false)
+  createdById String?
+  archivedAt  DateTime?
+  settings    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?           @relation("ChannelCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  members   ChannelMember[]
+  messages  Message[]
+  files     File[]
+  auditLogs AuditLog[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@index([createdById])
+  @@index([archivedAt])
+  @@map("channels")
+}
+
+model ChannelMember {
+  id        String   @id @default(uuid())
+  channelId String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@index([channelId])
+  @@index([userId])
+  @@map("channel_members")
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  content    String   @db.Text
+  userId     String
+  channelId  String
+  threadId   String?
+  replyToId  String?
+  isEdited   Boolean  @default(false)
+  isDeleted  Boolean  @default(false)
+  deletedAt  DateTime?
+  editedAt   DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  files     File[]            // One message can have multiple files
+  reactions MessageReaction[]
+  thread    Message?          @relation("MessageThread", fields: [threadId], references: [id])
+  replies   Message[]         @relation("MessageThread")
+  replyTo   Message?          @relation("MessageReply", fields: [replyToId], references: [id])
+  repliesTo Message[]         @relation("MessageReply")
+
+  @@index([channelId, createdAt])
+  @@index([userId])
+  @@index([threadId])
+  @@index([replyToId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+  @@index([emoji])
+  @@map("message_reactions")
+}
+
+model File {
+  id           String   @id @default(uuid())
+  filename     String
+  originalName String
+  mimetype     String
+  size         Int
+  path         String
+  uploadedById String
+  channelId    String?
+  messageId    String?   // File belongs to a message
+  isPublic     Boolean  @default(false)
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  uploadedBy User      @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: Cascade)
+  channel    Channel?  @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  message    Message?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([channelId])
+  @@index([uploadedById])
+  @@index([messageId])
+  @@index([createdAt])
+  @@map("files")
+}
+
+model DirectMessage {
+  id         String   @id @default(uuid())
+  content    String   @db.Text
+  senderId   String
+  receiverId String
+  isEdited   Boolean  @default(false)
+  isDeleted  Boolean  @default(false)
+  isRead     Boolean  @default(false)
+  readAt     DateTime?
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  sender   User @relation("DirectMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("DirectMessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, receiverId, createdAt])
+  @@index([receiverId, isRead])
+  @@index([createdAt])
+  @@map("direct_messages")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String?
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@index([type])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  action       String
+  userId       String?
+  workspaceId  String?
+  channelId    String?
+  resourceId   String?
+  resourceType String?
+  oldValue     Json?
+  newValue     Json?
+  metadata     Json?
+  ipAddress    String?
+  userAgent    String?
+  timestamp    DateTime @default(now())
+
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  channel   Channel?   @relation(fields: [channelId], references: [id], onDelete: SetNull)
+
+  @@index([userId, timestamp])
+  @@index([workspaceId, timestamp])
+  @@index([channelId, timestamp])
+  @@index([action, timestamp])
+  @@index([resourceType, resourceId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
